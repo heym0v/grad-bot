@@ -2,9 +2,6 @@ from transliterate import translit
 from fuzzywuzzy import fuzz
 import os
 import re
-import threading
-import http.server
-import socketserver
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -14,15 +11,6 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-
-# 🔧 Фейковый сервер для Render
-def run_web_server():
-    PORT = 10000
-    Handler = http.server.SimpleHTTPRequestHandler
-    with socketserver.TCPServer(("", PORT), Handler) as httpd:
-        httpd.serve_forever()
-
-threading.Thread(target=run_web_server, daemon=True).start()
 
 SONG_FILE = "songs.txt"
 original_songs = []

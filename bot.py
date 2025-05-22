@@ -10,6 +10,7 @@ from telegram.ext import (
     filters,
 )
 
+SONG_FILE = "songs.txt"
 original_songs = []
 normalized_songs = set()
 
@@ -17,9 +18,23 @@ TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID"))
 
 def normalize_song(song: str) -> str:
-    cleaned = re.sub(r'[^\w\s]', '', song.lower())  # Убираем пунктуацию
-    words = sorted(cleaned.split())  # Сортируем слова по алфавиту
+    cleaned = re.sub(r'[^\w\s]', '', song.lower())
+    words = sorted(cleaned.split())
     return ' '.join(words)
+
+def load_songs():
+    if os.path.exists(SONG_FILE):
+        with open(SONG_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                song = line.strip()
+                if song:
+                    original_songs.append(song)
+                    normalized_songs.add(normalize_song(song))
+
+def save_songs():
+    with open(SONG_FILE, "w", encoding="utf-8") as f:
+        for song in original_songs:
+            f.write(song + "\n")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -45,6 +60,7 @@ async def handle_song(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         normalized_songs.add(normalized)
         original_songs.append(song)
+        save_songs()
         await update.message.reply_text("Спасибо! Песня принята.")
         sender = update.message.from_user
         sender_name = f"@{sender.username}" if sender.username else sender.first_name
@@ -75,6 +91,7 @@ async def delete_song(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if 0 <= index < len(original_songs):
             removed_song = original_songs.pop(index)
             normalized_songs.remove(normalize_song(removed_song))
+            save_songs()
             await update.message.reply_text(f"Песня '{removed_song}' удалена.")
         else:
             await update.message.reply_text("Песня с таким номером не найдена.")
@@ -82,12 +99,14 @@ async def delete_song(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Укажи номер песни (например: /delete 3)")
 
 if __name__ == '__main__':
+    load_songs()
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(CommandHandler("delete", delete_song))  # Только админ может удалить
+    app.add_handler(CommandHandler("delete", delete_song))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_song))
 
     print("Бот запущен.")
     app.run_polling()
+

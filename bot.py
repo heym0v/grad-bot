@@ -1,3 +1,5 @@
+from transliterate import translit
+from fuzzywuzzy import fuzz
 import os
 import re
 import threading
@@ -30,7 +32,9 @@ TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID"))
 
 def normalize_song(song: str) -> str:
-    cleaned = re.sub(r'[^\w\s]', '', song.lower())
+    # Транслитерируем в латиницу
+    song_translit = translit(song, 'ru', reversed=True)
+    cleaned = re.sub(r'[^\w\s]', '', song_translit.lower())
     words = sorted(cleaned.split())
     return ' '.join(words)
 
@@ -67,16 +71,25 @@ async def handle_song(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     normalized = normalize_song(song)
 
+    # Сначала точное совпадение
     if normalized in normalized_songs:
         await update.message.reply_text("Эта песня уже была предложена. Попробуй другую.")
-    else:
-        normalized_songs.add(normalized)
-        original_songs.append(song)
-        save_songs()
-        await update.message.reply_text("Спасибо! Песня принята.")
-        sender = update.message.from_user
-        sender_name = f"@{sender.username}" if sender.username else sender.first_name
-        await context.bot.send_message(chat_id=ADMIN_ID, text=f"Новая песня от {sender_name}: {song}")
+        return
+
+    # Проверяем на похожесть (например, порог 90)
+    for existing in normalized_songs:
+        if fuzz.ratio(normalized, existing) > 90:
+            await update.message.reply_text("Похожая песня уже была предложена. Попробуй другую.")
+            return
+
+    # Если всё ок — добавляем
+    normalized_songs.add(normalized)
+    original_songs.append(song)
+    save_songs()
+    await update.message.reply_text("Спасибо! Песня принята.")
+    sender = update.message.from_user
+    sender_name = f"@{sender.username}" if sender.username else sender.first_name
+    await context.bot.send_message(chat_id=ADMIN_ID, text=f"Новая песня от {sender_name}: {song}")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -121,4 +134,3 @@ if __name__ == '__main__':
 
     print("Бот запущен.")
     app.run_polling()
-

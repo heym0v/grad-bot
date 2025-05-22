@@ -1,7 +1,14 @@
 import os
 import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters,
+)
 
 original_songs = []
 normalized_songs = set()
@@ -10,8 +17,8 @@ TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID"))
 
 def normalize_song(song: str) -> str:
-    cleaned = re.sub(r'[^\w\s]', '', song.lower())
-    words = sorted(cleaned.split())
+    cleaned = re.sub(r'[^\w\s]', '', song.lower())  # Убираем пунктуацию
+    words = sorted(cleaned.split())  # Сортируем слова по алфавиту
     return ' '.join(words)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -19,10 +26,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📃 Показать все песни", callback_data="show_songs")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Привет! Отправь сюда песню, а я проверю, есть ли она. Или нажми кнопку, чтобы посмотреть список уже предложенных.", reply_markup=reply_markup)
+    await update.message.reply_text(
+        "Привет! Отправь сюда песню, а я проверю, есть ли она. Или нажми кнопку, чтобы посмотреть список уже предложенных.",
+        reply_markup=reply_markup,
+    )
 
 async def handle_song(update: Update, context: ContextTypes.DEFAULT_TYPE):
     song = update.message.text.strip()
+
+    if '-' in song:
+        await update.message.reply_text("Пожалуйста, не используй тире (-) в названии песни.")
+        return
+
     normalized = normalize_song(song)
 
     if normalized in normalized_songs:
@@ -44,14 +59,34 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = "🎶 Уже предложенные песни:\n\n" + "\n".join(f"{i+1}. {s}" for i, s in enumerate(original_songs))
         else:
             text = "Пока что нет предложенных песен."
-
         await query.edit_message_text(text=text)
+
+async def delete_song(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("Удалять песни может только администратор.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("Пожалуйста, укажи номер песни, которую хочешь удалить.")
+        return
+
+    try:
+        index = int(context.args[0]) - 1
+        if 0 <= index < len(original_songs):
+            removed_song = original_songs.pop(index)
+            normalized_songs.remove(normalize_song(removed_song))
+            await update.message.reply_text(f"Песня '{removed_song}' удалена.")
+        else:
+            await update.message.reply_text("Песня с таким номером не найдена.")
+    except ValueError:
+        await update.message.reply_text("Укажи номер песни (например: /delete 3)")
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(CommandHandler("delete", delete_song))  # Только админ может удалить
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_song))
 
     print("Бот запущен.")
